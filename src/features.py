@@ -6,15 +6,28 @@ BASE_FEATURES = [
     "sku_id",
     "store_type",
     "sku_category",
+    "sku_velocity",
+    "schedule_type",
     "horizon",
     "target_day_of_week",
     "target_month",
     "target_is_weekend",
-    "target_is_holiday",
+    "target_is_store_open",
+    "target_is_new_year",
+    "target_is_christmas",
+    "target_is_mothers_day",
+    "target_is_halloween",
+    "target_is_chile_independence",
+    "target_is_winter_break",
+    "target_is_special_event",
     "target_is_promo",
     "target_temperature",
     "target_rain_mm",
     "target_is_rainy",
+    "rain_sensitive",
+    "winter_sensitive",
+    "holiday_sensitive",
+    "september_sensitive",
 ]
 
 LAG_FEATURES = [
@@ -57,7 +70,11 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_forecasting_dataset(raw_df: pd.DataFrame, max_horizon: int = 7, min_history_days: int = 35) -> pd.DataFrame:
+def build_forecasting_dataset(
+    raw_df: pd.DataFrame,
+    max_horizon: int = 7,
+    min_history_days: int = 35,
+) -> pd.DataFrame:
     """Build a supervised forecasting dataset.
 
     Each row is a forecast origin date plus a forecast horizon.
@@ -65,6 +82,38 @@ def build_forecasting_dataset(raw_df: pd.DataFrame, max_horizon: int = 7, min_hi
     """
     df = add_temporal_features(raw_df)
     frames = []
+
+    target_covariates = raw_df[[
+        "store_id",
+        "sku_id",
+        "date",
+        "is_store_open",
+        "is_new_year",
+        "is_christmas",
+        "is_mothers_day",
+        "is_halloween",
+        "is_chile_independence",
+        "is_winter_break",
+        "is_special_event",
+        "is_promo",
+        "temperature",
+        "rain_mm",
+        "is_rainy",
+    ]].rename(columns={
+        "date": "target_date",
+        "is_store_open": "target_is_store_open",
+        "is_new_year": "target_is_new_year",
+        "is_christmas": "target_is_christmas",
+        "is_mothers_day": "target_is_mothers_day",
+        "is_halloween": "target_is_halloween",
+        "is_chile_independence": "target_is_chile_independence",
+        "is_winter_break": "target_is_winter_break",
+        "is_special_event": "target_is_special_event",
+        "is_promo": "target_is_promo",
+        "temperature": "target_temperature",
+        "rain_mm": "target_rain_mm",
+        "is_rainy": "target_is_rainy",
+    })
 
     for horizon in range(1, max_horizon + 1):
         origin = df.copy()
@@ -83,17 +132,6 @@ def build_forecasting_dataset(raw_df: pd.DataFrame, max_horizon: int = 7, min_hi
         merged["target_day_of_week"] = merged["target_date"].dt.dayofweek
         merged["target_month"] = merged["target_date"].dt.month
         merged["target_is_weekend"] = merged["target_day_of_week"].isin([5, 6]).astype(int)
-
-        target_covariates = raw_df[[
-            "store_id", "sku_id", "date", "is_holiday", "is_promo", "temperature", "rain_mm", "is_rainy"
-        ]].rename(columns={
-            "date": "target_date",
-            "is_holiday": "target_is_holiday",
-            "is_promo": "target_is_promo",
-            "temperature": "target_temperature",
-            "rain_mm": "target_rain_mm",
-            "is_rainy": "target_is_rainy",
-        })
 
         merged = merged.merge(target_covariates, on=["store_id", "sku_id", "target_date"], how="left")
         frames.append(merged)

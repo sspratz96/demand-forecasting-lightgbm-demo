@@ -33,7 +33,11 @@ def plot_error_by_horizon(metrics_by_horizon: pd.DataFrame, output_path: Path) -
 
 def plot_sample_forecast(test_df: pd.DataFrame, output_path: Path) -> None:
     sample_keys = (
-        test_df.groupby(["store_id", "sku_id"])["target"].sum().sort_values(ascending=False).head(1).index[0]
+        test_df.groupby(["store_id", "sku_id"])["target"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(1)
+        .index[0]
     )
 
     sample = test_df[

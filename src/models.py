@@ -10,7 +10,14 @@ except ImportError as exc:
     raise ImportError("LightGBM is required. Install dependencies with: pip install -r requirements.txt") from exc
 
 
-CATEGORICAL_FEATURES = ["store_id", "sku_id", "store_type", "sku_category"]
+CATEGORICAL_FEATURES = [
+    "store_id",
+    "sku_id",
+    "store_type",
+    "sku_category",
+    "sku_velocity",
+    "schedule_type",
+]
 
 
 def build_lightgbm_pipeline(feature_columns: list[str]) -> Pipeline:

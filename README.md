@@ -51,6 +51,43 @@ can materially improve forecasting quality.
 
 ---
 
+## Realistic Synthetic Scenario
+
+The default generator is configured to approximate a realistic store-SKU planning context:
+
+- 3 years of daily sales data
+- 26 stores
+- 200 SKUs
+- store-SKU availability restrictions
+- stores with different opening schedules
+- only some stores closed on weekends
+- some stores closed only on Sundays
+- some stores open on weekends with reduced demand due to shorter schedules
+- low-velocity SKUs selling 0-1 units on many days
+- low/medium SKUs selling around 3-5 units depending on store and season
+- medium/high SKUs selling from 5 to 35+ units depending on store, season and events
+- Christmas, New Year, Mother's Day, Halloween and Chilean Independence Day effects
+- winter vacation effects
+- rain and winter sensitivity for selected SKUs
+- store and SKU category effects
+- temporal persistence in demand
+
+Because the default scenario is larger than a toy dataset, the generated forecasting dataset can contain several million rows after expanding each observation into a 7-day forecast horizon.
+
+For a lighter local run, use:
+
+```bash
+python run_demo.py --scale demo
+```
+
+For the larger realistic scenario, use:
+
+```bash
+python run_demo.py --scale realistic
+```
+
+---
+
 ## Repository Structure
 
 ```text
@@ -82,12 +119,12 @@ git clone https://github.com/sspratz96/demand-forecasting-lightgbm-demo.git
 cd demand-forecasting-lightgbm-demo
 
 python -m venv .venv
-source .venv/bin/activate  # macOS/Linux
-# .venv\Scripts\activate   # Windows
+.venv\Scripts\activate   # Windows
+# source .venv/bin/activate  # macOS/Linux
 
 pip install -r requirements.txt
 
-python run_demo.py
+python run_demo.py --scale demo
 ```
 
 The demo will:
@@ -120,16 +157,17 @@ outputs/
 
 The generated dataset simulates:
 
-- multiple stores
-- multiple SKUs
+- 26 stores and 200 SKUs in realistic mode
 - daily sales
 - store categories
 - SKU categories
-- product availability
+- product availability restrictions
+- store opening schedules
 - weekly seasonality
 - yearly seasonality
 - promotions
-- holidays
+- Chilean commercial/event dates
+- winter vacation effects
 - weather effects
 - demand persistence
 - store-SKU-specific behavior
@@ -168,13 +206,16 @@ Used by both LightGBM models:
 - SKU ID
 - store type
 - SKU category
+- SKU velocity segment
+- store schedule type
 - target day of week
 - target month
 - target weekend flag
-- target holiday flag
-- promotion flag
-- weather variables
-- product availability
+- target store open flag
+- target event flags
+- target promotion flag
+- target weather variables
+- SKU sensitivity flags
 - forecast horizon
 
 ### Lag and rolling features

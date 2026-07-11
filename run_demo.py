@@ -1,4 +1,5 @@
 from pathlib import Path
+import argparse
 import pandas as pd
 
 from src.synthetic_data import generate_synthetic_demand
@@ -17,10 +18,45 @@ for path in [DATA_DIR, METRICS_DIR, FIGURES_DIR]:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run synthetic LightGBM demand forecasting demo.")
+    parser.add_argument(
+        "--scale",
+        choices=["demo", "realistic"],
+        default="demo",
+        help="demo is lighter for local laptops; realistic uses 26 stores and 200 SKUs.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
-    print("Generating synthetic demand data...")
-    raw = generate_synthetic_demand()
+    args = parse_args()
+
+    if args.scale == "realistic":
+        generator_kwargs = {
+            "start_date": "2022-01-01",
+            "end_date": "2024-12-31",
+            "n_stores": 26,
+            "n_skus": 200,
+            "availability_rate": 0.62,
+        }
+    else:
+        generator_kwargs = {
+            "start_date": "2022-01-01",
+            "end_date": "2024-12-31",
+            "n_stores": 12,
+            "n_skus": 80,
+            "availability_rate": 0.62,
+        }
+
+    print(f"Generating synthetic demand data with scale={args.scale}...")
+    raw = generate_synthetic_demand(**generator_kwargs)
     raw.to_csv(DATA_DIR / "synthetic_store_sku_demand.csv", index=False)
+
+    print(f"Raw rows: {len(raw):,}")
+    print(f"Stores: {raw['store_id'].nunique():,}")
+    print(f"SKUs: {raw['sku_id'].nunique():,}")
+    print(f"Available store-SKU combinations: {raw[['store_id', 'sku_id']].drop_duplicates().shape[0]:,}")
 
     print("Building forecasting dataset...")
     model_df = build_forecasting_dataset(raw, max_horizon=7)
@@ -30,6 +66,7 @@ def main() -> None:
     train_df = model_df[model_df["target_date"] < split_date].copy()
     test_df = model_df[model_df["target_date"] >= split_date].copy()
 
+    print(f"Modeling rows: {len(model_df):,}")
     print(f"Train rows: {len(train_df):,}")
     print(f"Test rows: {len(test_df):,}")
 
