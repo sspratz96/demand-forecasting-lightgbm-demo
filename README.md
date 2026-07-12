@@ -12,7 +12,7 @@ The purpose is to demonstrate how temporal feature engineering changes model per
 
 ## Objective
 
-The project compares three approaches:
+The project compares six approaches:
 
 1. **Rule-based baseline**
    - Forecast demand using recent historical averages.
@@ -22,10 +22,18 @@ The project compares three approaches:
    - Uses store, SKU, calendar, weather and operational variables.
    - Does not include recent demand history as model inputs.
 
-3. **LightGBM with lag and rolling features**
+3. **LightGBM with simple lag and rolling features**
    - Uses the same base variables.
-   - Adds lagged demand, rolling averages and rolling volatility.
-   - Tests whether explicitly encoding temporal dependency improves forecast performance.
+   - Adds a compact set of lagged demand and rolling statistics.
+
+4. **LightGBM with enriched lag features**
+   - Adds a broader family of lag-based features, including lag differences, percentage changes, rolling sums, rolling standard deviations, high-demand flags, availability lags, campaign lags and pack lags.
+
+5. **LightGBM with advanced temporal features**
+   - Extends the enriched feature set with additional temporal signals such as exponentially weighted moving averages, zero-demand counts, volatility ratios, recent-vs-monthly demand ratios and sales acceleration.
+
+6. **LightGBM advanced bagged ensemble**
+   - Trains three LightGBM configurations over the advanced temporal feature set and averages their predictions to improve stability.
 
 The key question is:
 
@@ -131,10 +139,14 @@ The demo will:
 
 1. Generate synthetic store-SKU daily demand data.
 2. Build a 7-day-ahead forecasting dataset.
-3. Train LightGBM without lag features.
-4. Train LightGBM with lag and rolling features.
-5. Compare both models against a rule-based baseline.
-6. Save metrics and plots in `outputs/`.
+3. Train a rule-based baseline.
+4. Train LightGBM without lag features.
+5. Train LightGBM with simple lag features.
+6. Train LightGBM with enriched lag features.
+7. Train LightGBM with advanced temporal features.
+8. Train an advanced LightGBM bagged ensemble.
+9. Evaluate model accuracy, runtime, horizon-weighted performance, error breakdowns and feature importance.
+10. Save metrics and plots in `outputs/`.
 
 ---
 
@@ -144,11 +156,18 @@ The demo will:
 outputs/
 ├── metrics/
 │   ├── metrics_summary.csv
-│   └── metrics_by_horizon.csv
+│   ├── metrics_by_horizon.csv
+│   ├── metrics_horizon_weighted_final.csv
+│   ├── runtime_summary.csv
+│   ├── error_breakdown.csv
+│   └── feature_importance.csv
 └── figures/
     ├── metric_comparison.png
     ├── error_by_horizon.png
-    └── sample_forecast_comparison.png
+    ├── weighted_rmse_by_horizon.png
+    ├── sample_forecast_comparison.png
+    ├── actual_vs_predicted_*.png
+    └── feature_importance_pred_lgbm_advanced_bagged.png
 ```
 
 ---
@@ -218,9 +237,9 @@ Used by both LightGBM models:
 - SKU sensitivity flags
 - forecast horizon
 
-### Lag and rolling features
+### Simple lag and rolling features
 
-Used only by the second LightGBM model:
+Used by the simple-lag LightGBM model:
 
 - lag 1
 - lag 7
@@ -236,6 +255,46 @@ Used only by the second LightGBM model:
 - rolling maximum 7
 - recent demand momentum
 
+### Enriched lag features
+
+Used by the enriched-lag LightGBM model.
+
+For each lag window `[7, 14, 21, 30]`, the model adds:
+
+- lagged demand
+- lag difference
+- lag percentage change
+- rolling average
+- rolling sum
+- rolling standard deviation
+- high-demand flag
+- lagged store-open / availability signal
+- lagged campaign signal
+- lagged pack signal
+
+### Advanced temporal features
+
+Used by the advanced temporal LightGBM model:
+
+- exponential weighted moving averages
+- zero-demand counts
+- nonzero-demand counts
+- rolling coefficients of variation
+- recent-vs-monthly demand ratios
+- sales acceleration between short and longer windows
+
+### Advanced bagged ensemble
+
+Used by the final LightGBM ensemble.
+
+The ensemble trains three versions of the advanced temporal model:
+
+- shallow and fast
+- medium and balanced
+- deeper and more detailed
+
+The final prediction is the average of the three model outputs.
+
 ---
 
 ## Expected Result
@@ -244,9 +303,53 @@ The LightGBM model without lag features should learn broad patterns such as stor
 
 However, it should struggle to capture recent demand changes.
 
-The LightGBM model with lag and rolling features should generally perform better because the model receives explicit information about recent demand behavior.
+The largest performance gain is expected to come from adding temporal memory through lag and rolling features.
+
+More advanced feature engineering and bagging may continue improving performance, but with diminishing returns and higher runtime cost.
+
+In practice, the advanced temporal model is expected to offer the best balance between accuracy and computational cost, while the bagged model is expected to achieve the best overall accuracy.
 
 ---
+
+
+## Results
+
+The demo run produced the following horizon-weighted final forecast metrics:
+
+| Model | WMAPE | R² | Interpretation |
+|---|---:|---:|---|
+| Rule-based baseline | 0.4720 | -0.132 | Simple and fast, but limited |
+| LightGBM without lags | 0.4473 | 0.045 | Learns broad patterns, but lacks temporal memory |
+| LightGBM with simple lags | 0.3816 | 0.274 | Largest improvement from adding recent demand history |
+| LightGBM with enriched lags | 0.3735 | 0.306 | Better accuracy from richer temporal feature engineering |
+| LightGBM advanced temporal | 0.3695 | 0.321 | Best balance between accuracy and runtime |
+| LightGBM advanced bagged | 0.3686 | 0.324 | Best overall accuracy, but highest training cost |
+
+### Accuracy vs Complexity Trade-off
+
+The largest performance gain came from adding temporal memory through lag and rolling features.
+
+More advanced feature engineering and bagging continued improving performance, but with diminishing returns and higher runtime cost.
+
+The advanced temporal model offered the best balance between accuracy and computational cost, while the bagged model achieved the best overall accuracy.
+
+### Runtime Benchmark
+
+In one local demo run, total runtime was approximately 20.9 minutes.
+
+| Stage | Runtime |
+|---|---:|
+| Synthetic data generation | 8.4 seconds |
+| Feature engineering | 267.4 seconds |
+| LightGBM without lags | 46.2 seconds |
+| LightGBM simple lags | 70.5 seconds |
+| LightGBM enriched lags | 135.7 seconds |
+| LightGBM advanced temporal | 156.8 seconds |
+| LightGBM advanced bagged | 496.7 seconds |
+| Evaluation and diagnostics | 43.8 seconds |
+| Plots | 4.6 seconds |
+
+The results show that model complexity should be evaluated not only by accuracy, but also by runtime, maintainability and operational cost.
 
 ## Disclaimer
 
