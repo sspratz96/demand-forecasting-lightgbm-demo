@@ -14,9 +14,11 @@ def evaluate_predictions(df: pd.DataFrame, prediction_col: str) -> dict:
     y_true = df["target"].to_numpy()
     y_pred = df[prediction_col].to_numpy()
 
+    mse = mean_squared_error(y_true, y_pred)
+
     return {
         "mae": mean_absolute_error(y_true, y_pred),
-        "rmse": mean_squared_error(y_true, y_pred, squared=False),
+        "rmse": np.sqrt(mse),
         "wmape": wmape(y_true, y_pred),
         "r2": r2_score(y_true, y_pred),
     }
