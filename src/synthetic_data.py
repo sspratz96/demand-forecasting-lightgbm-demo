@@ -9,9 +9,7 @@ def _second_sunday_of_may(year: int) -> pd.Timestamp:
 
 
 def _add_chile_retail_calendar(df: pd.DataFrame) -> pd.DataFrame:
-    """Add synthetic Chilean retail/event calendar features."""
     df = df.copy()
-
     df["is_new_year"] = ((df["date"].dt.month == 1) & (df["date"].dt.day == 1)).astype(int)
     df["is_christmas"] = ((df["date"].dt.month == 12) & (df["date"].dt.day.isin([24, 25]))).astype(int)
     df["is_halloween"] = ((df["date"].dt.month == 10) & (df["date"].dt.day == 31)).astype(int)
@@ -22,7 +20,6 @@ def _add_chile_retail_calendar(df: pd.DataFrame) -> pd.DataFrame:
     mothers_days = {_second_sunday_of_may(int(y)) for y in df["date"].dt.year.unique()}
     df["is_mothers_day"] = df["date"].isin(mothers_days).astype(int)
 
-    # Approximate Chilean winter vacation period.
     df["is_winter_break"] = (
         (df["date"].dt.month == 7) & (df["date"].dt.day.between(8, 24))
     ).astype(int)
@@ -52,13 +49,6 @@ def generate_synthetic_demand(
     seed: int = 42,
     availability_rate: float = 0.62,
 ) -> pd.DataFrame:
-    """Generate synthetic daily store-SKU demand data.
-
-    The default parameters approximate a realistic planning context:
-    roughly three years of daily sales, around 200 SKUs and around 26 stores.
-
-    The data is synthetic and does not contain real company data.
-    """
     rng = np.random.default_rng(seed)
     dates = pd.date_range(start=start_date, end=end_date, freq="D")
 
@@ -88,7 +78,6 @@ def generate_synthetic_demand(
         "store_base_traffic": rng.uniform(0.65, 1.45, size=n_stores),
     })
 
-    # Only some stores close on weekends. Others open all week or have shorter weekend behavior.
     stores["schedule_type"] = rng.choice(
         ["all_week", "closed_weekends", "closed_sundays", "short_weekends"],
         size=n_stores,
@@ -110,17 +99,17 @@ def generate_synthetic_demand(
         "high": (35.0, 90.0),
     }
 
-    sku_base_demand = np.array([rng.uniform(*base_by_velocity[v]) for v in sku_velocity])
-
     skus = pd.DataFrame({
         "sku_id": sku_ids,
         "sku_category": rng.choice(sku_categories, size=n_skus, replace=True),
         "sku_velocity": sku_velocity,
-        "sku_base_demand": sku_base_demand,
+        "sku_base_demand": [rng.uniform(*base_by_velocity[v]) for v in sku_velocity],
         "rain_sensitive": rng.binomial(1, 0.22, size=n_skus),
         "winter_sensitive": rng.binomial(1, 0.24, size=n_skus),
         "holiday_sensitive": rng.binomial(1, 0.18, size=n_skus),
         "september_sensitive": rng.binomial(1, 0.15, size=n_skus),
+        "campaign_sensitive": rng.binomial(1, 0.20, size=n_skus),
+        "is_pack_sku": rng.binomial(1, 0.16, size=n_skus),
     })
 
     availability = (
@@ -143,48 +132,29 @@ def generate_synthetic_demand(
     grid["is_weekend"] = grid["day_of_week"].isin([5, 6]).astype(int)
 
     grid["is_store_open"] = 1
-    grid.loc[
-        (grid["schedule_type"] == "closed_weekends") & (grid["day_of_week"].isin([5, 6])),
-        "is_store_open",
-    ] = 0
-    grid.loc[
-        (grid["schedule_type"] == "closed_sundays") & (grid["day_of_week"] == 6),
-        "is_store_open",
-    ] = 0
+    grid.loc[(grid["schedule_type"] == "closed_weekends") & (grid["day_of_week"].isin([5, 6])), "is_store_open"] = 0
+    grid.loc[(grid["schedule_type"] == "closed_sundays") & (grid["day_of_week"] == 6), "is_store_open"] = 0
 
     day_index = (grid["date"] - grid["date"].min()).dt.days
-
-    # Southern Hemisphere style temperature pattern: colder around mid-year.
     yearly_temp = 17 - 8 * np.cos(2 * np.pi * day_index / 365.25)
     grid["temperature"] = yearly_temp + rng.normal(0, 3, len(grid))
 
     winter_month = grid["month"].isin([5, 6, 7, 8]).astype(int)
     rain_base = rng.gamma(1.2, 2.0, len(grid))
-    grid["rain_mm"] = np.maximum(
-        0,
-        rain_base + winter_month * rng.gamma(1.8, 2.5, len(grid)) - 1.6,
-    )
+    grid["rain_mm"] = np.maximum(0, rain_base + winter_month * rng.gamma(1.8, 2.5, len(grid)) - 1.6)
     grid["is_rainy"] = (grid["rain_mm"] > 1.5).astype(int)
 
     grid = _add_chile_retail_calendar(grid)
 
     grid["is_promo"] = rng.binomial(1, 0.04, len(grid))
+    grid["is_campaign"] = (
+        (rng.binomial(1, 0.025, len(grid)) == 1)
+        | ((grid["is_christmas"] == 1) & (rng.binomial(1, 0.35, len(grid)) == 1))
+        | ((grid["is_chile_independence"] == 1) & (rng.binomial(1, 0.25, len(grid)) == 1))
+    ).astype(int)
 
-    weekday_effect = grid["day_of_week"].map({
-        0: 0.88,
-        1: 0.92,
-        2: 0.98,
-        3: 1.02,
-        4: 1.12,
-        5: 1.28,
-        6: 1.08,
-    }).astype(float)
-
-    short_weekend_effect = np.where(
-        (grid["schedule_type"] == "short_weekends") & (grid["is_weekend"] == 1),
-        0.55,
-        1.0,
-    )
+    weekday_effect = grid["day_of_week"].map({0: 0.88, 1: 0.92, 2: 0.98, 3: 1.02, 4: 1.12, 5: 1.28, 6: 1.08}).astype(float)
+    short_weekend_effect = np.where((grid["schedule_type"] == "short_weekends") & (grid["is_weekend"] == 1), 0.55, 1.0)
 
     category_effect = grid["sku_category"].map({
         "fresh": 1.15,
@@ -212,6 +182,8 @@ def generate_synthetic_demand(
     mothers_day_effect = 1 + 0.30 * grid["holiday_sensitive"] * grid["is_mothers_day"]
     september_effect = 1 + 0.38 * grid["september_sensitive"] * grid["is_chile_independence"]
     promo_effect = 1 + 0.28 * grid["is_promo"]
+    campaign_effect = 1 + 0.32 * grid["campaign_sensitive"] * grid["is_campaign"]
+    pack_effect = 1 + 0.18 * grid["is_pack_sku"] * grid["is_campaign"]
     temperature_effect = 1 + 0.008 * (grid["temperature"] - grid["temperature"].mean())
 
     base_mu = (
@@ -229,6 +201,8 @@ def generate_synthetic_demand(
         * mothers_day_effect
         * september_effect
         * promo_effect
+        * campaign_effect
+        * pack_effect
         * grid["is_store_open"]
     )
 
@@ -254,9 +228,8 @@ def generate_synthetic_demand(
                 rolling_memory = 0.85 * rolling_memory + 0.15 * previous
 
             noisy_mu = max(0.02, temporal_mu * rng.lognormal(mean=0, sigma=0.22))
-            demand = rng.poisson(noisy_mu)
-            demand_values.append(demand)
-            previous = demand
+            demand_values.append(rng.poisson(noisy_mu))
+            previous = demand_values[-1]
 
     grid["demand"] = demand_values
     return grid
